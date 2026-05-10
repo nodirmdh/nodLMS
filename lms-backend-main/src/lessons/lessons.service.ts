@@ -1,15 +1,19 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Lesson, LessonStudentReason, User } from '@prisma/client';
 import { addDays, getMonth, format } from 'date-fns';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { countLessonsInMonth } from 'src/shared/utils/lesson-price';
 import { SMSService } from 'src/sms/sms.service';
+import { NotificationService } from 'src/notification/notification.service';
 
 @Injectable()
 export class LessonsService {
+  private readonly logger = new Logger('LessonsService');
+
   constructor(
     private readonly prisma: PrismaService,
     private smsService: SMSService,
+    private notifications: NotificationService,
   ) {}
 
   async create(data: Lesson, user: User): Promise<Lesson> {
@@ -368,7 +372,10 @@ export class LessonsService {
       reason: LessonStudentReason;
     }[],
   ) {
-    return await this.prisma.$transaction(async (prisma) => {
+    // Собираем список "не посещавших" для последующей рассылки. Саму
+    // рассылку делаем ПОСЛЕ commit'а $transaction — SMS-фейл не должен
+    // откатывать БД.
+    const result = await this.prisma.$transaction(async (prisma) => {
       for (const student of students) {
         await prisma.studentOnLesson.update({
           where: {
@@ -384,76 +391,86 @@ export class LessonsService {
         });
       }
 
-      const result = await prisma.lesson.update({
-        where: {
-          id: lessonId,
-        },
-        data: {
-          status: 'completed',
-        },
+      const updated = await prisma.lesson.update({
+        where: { id: lessonId },
+        data: { status: 'completed' },
       });
 
-      const group = await prisma.group.findUnique({
-        where: { id: result.groupId },
-        include: { course: true },
-      });
-
-      const date = new Date(result.date);
-      const formattedDate = format(date, 'dd.MM.yyyy');
-
-      const notAttendedStudents = students
-        .filter((student) => {
-          if (student.attended === false && student.reason !== 'askedOff') {
-            return student;
-          }
-        }) // фильтрация тех, кто не посещал
-        .flatMap((student: any) => {
-          const entries = [];
-
-          if (student.mother.phone) {
-            entries.push({
-              fio: student.student.fio,
-              phone: student.mother.phone,
-            });
-          }
-
-          if (student.father && student.father.phone) {
-            entries.push({
-              fio: student.student.fio,
-              phone: student.father.phone,
-            });
-          }
-
-          return entries;
-        })
-        .map(({ fio, phone }: any) => {
-          return {
-            smsid: Math.floor(Math.random() * (2000 - 100 + 1)) + 100,
-            phone: phone,
-            text: `Eskertiw! Hu'rmetli ata-ana sizdin' perzentin'iz ${fio.toUpperCase()} RUSTAMBEK OQIW ORAYinda 
-            ${formattedDate} kúni sabaqqa qatnaspadi. Keyingi sabaqqa qatnasiwin ta'minlewdi soraymiz. 
-            RUSTAMBEK OQIW ORAYI Administratsciya. tel: 941235151`,
-          };
-        });
-
-      if (notAttendedStudents.length) {
-        await this.smsService.sendLessonGroupSMS(notAttendedStudents);
-      }
-      const lessonStudents = await this.prisma.studentOnLesson.findMany({
-        where: {
-          lessonId: result.id,
-        },
+      const lessonStudents = await prisma.studentOnLesson.findMany({
+        where: { lessonId: updated.id },
       });
 
       await this.payLesson(
-        result.groupId,
-        result.mentorId,
+        updated.groupId,
+        updated.mentorId,
         lessonStudents,
         lessonId,
       );
 
-      return result;
+      return updated;
     });
+
+    // Notify outside of the DB transaction.
+    try {
+      await this.notifyNotAttended(result, students);
+    } catch (err) {
+      this.logger.warn(
+        `notifyNotAttended failed: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+
+    return result;
+  }
+
+  private async notifyNotAttended(
+    lesson: Lesson,
+    students: {
+      attended: any;
+      studentId: number;
+      reason: LessonStudentReason;
+      student?: { fio: string };
+      mother?: { phone?: string };
+      father?: { phone?: string };
+    }[],
+  ) {
+    const date = new Date(lesson.date);
+    const formattedDate = format(date, 'dd.MM.yyyy');
+
+    const recipients: Array<{ fio: string; phone: string }> = [];
+    for (const s of students) {
+      if (s.attended !== false || s.reason === 'askedOff') continue;
+      if (!s.student?.fio) continue;
+      if (s.mother?.phone) recipients.push({ fio: s.student.fio, phone: s.mother.phone });
+      if (s.father?.phone) recipients.push({ fio: s.student.fio, phone: s.father.phone });
+    }
+    if (!recipients.length) return;
+
+    const useQueue = process.env.NOTIFY_VIA_QUEUE === 'true';
+
+    if (useQueue) {
+      await this.notifications.sendBulk(
+        recipients.map(({ fio, phone }) => ({
+          channel: 'sms' as const,
+          recipient: phone,
+          // Template not yet seeded for this flow — we use plain text.
+          // Once `lesson.absence` template is added to seed.ts it can be
+          // switched to sendFromTemplate({ code: 'lesson.absence', ... }).
+          text: `Eskertiw! Hu'rmetli ata-ana sizdin' perzentin'iz ${fio.toUpperCase()} RUSTAMBEK OQIW ORAYinda ${formattedDate} kúni sabaqqa qatnaspadi. Keyingi sabaqqa qatnasiwin ta'minlewdi soraymiz. tel: 941235151`,
+          meta: { kind: 'lesson.absence', lessonId: lesson.id },
+        })),
+      );
+      return;
+    }
+
+    // Legacy bulk path
+    const messages = recipients.map(({ fio, phone }) => ({
+      smsid: Math.floor(Math.random() * (2000 - 100 + 1)) + 100,
+      phone,
+      text: `Eskertiw! Hu'rmetli ata-ana sizdin' perzentin'iz ${fio.toUpperCase()} RUSTAMBEK OQIW ORAYinda ${formattedDate} kúni sabaqqa qatnaspadi. Keyingi sabaqqa qatnasiwin ta'minlewdi soraymiz. tel: 941235151`,
+    }));
+    await this.smsService.sendLessonGroupSMS(messages);
   }
 
   async update(id: number, data: Lesson): Promise<Lesson> {

@@ -26,6 +26,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useState } from "react";
 import { StudentTrasactionForm } from "@/features/student-trasaction-form";
 import { StudentBonusForm } from "@/features/student-bonus-form";
+import { TelegramLinkButton } from "@/features/telegram-link-button";
 import { format } from "date-fns";
 
 export const ViewStudent = () => {
@@ -176,6 +177,9 @@ export const ViewStudent = () => {
                   {t("edit", { ns: "common" })}
                 </Button>
               </Link>
+            )}
+            {toAuthRoleCheck(role, ["CEO", "admin", "manager"]) && data?.id && (
+              <TelegramLinkButton studentId={data.id} />
             )}
           </div>
         </div>

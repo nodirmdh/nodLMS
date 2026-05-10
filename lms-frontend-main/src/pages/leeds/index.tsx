@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   DragDropContext,
   Droppable,
@@ -16,235 +16,158 @@ import {
 import { LeedForm } from "@/features/leed-form";
 import {
   useCreateLeedMutation,
-  useGetAllLeedsQuery,
-  useUpdateLeedMutation
 } from "@/app/store/services/leeds.service";
+import {
+  IKanbanColumn,
+  IKanbanLeed,
+  LeedStatus,
+  useGetKanbanQuery,
+  useMoveLeedMutation,
+} from "@/app/store/services/leeds-kanban.service";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { formatPhoneNumber } from "@/lib/utils";
 
-interface Task {
-  id: string;
-  content: {
-    fio: string;
-    phone: string;
-    discoveryMethod: string;
-    startTime: string;
-    endTime: string;
-    classDays: string[];
-    comment: string;
-    course: any;
-  };
-}
-
-interface Column {
-  id: string;
+type ColumnState = {
+  status: LeedStatus;
   title: string;
-  taskIds: string[];
-}
+  items: IKanbanLeed[];
+};
 
-interface BoardData {
-  tasks: { [key: string]: Task };
-  columns: { [key: string]: Column };
-  columnOrder: string[];
-}
-
-
+const COLUMN_ORDER: LeedStatus[] = [
+  "new",
+  "waitingGroup",
+  "inGroup",
+  "finished",
+  "refused",
+];
 
 export const LeedsPage: React.FC = () => {
-  const leeds = useGetAllLeedsQuery({});
+  const { data, isSuccess } = useGetKanbanQuery();
+  const [moveLeed] = useMoveLeedMutation();
   const { t } = useTranslation("leed");
-  const defaultValue = {
-    tasks: {},
-    columns: {
-      new: {
-        id: "new",
-        title: t("new"),
-        taskIds: [],
-      },
-      inGroup: {
-        id: "inGroup",
-        title: t("inProcess"),
-        taskIds: [],
-      },
-      waitingGroup: {
-        id: "waitingGroup",
-        title: t("waitingGroup"),
-        taskIds: [],
-      },
-      refused: {
-        id: "refused",
-        title: t("refused"),
-        taskIds: [],
-      },
-    },
-    columnOrder: ["new", "inGroup", "waitingGroup", "refused"],
-  };
 
-  const getTasks = (): BoardData => {
-    const tasks = leeds.data.reduce((acc: any, item: any) => {
-      const taskId = `task-${item.id}`;
-      acc[taskId] = {
-        id: taskId,
-        content: {
-          fio: item.fio,
-          phone: item.phone,
-          discoveryMethod: item.discoveryMethod,
-          comment: item.comment,
-          startTime: item.startTime,
-          endTime: item.endTime,
-          classDays: item.classDays,
-          course: item.course,
-        },
-      };
-      return acc;
-    }, {});
+  const titles = useMemo<Record<LeedStatus, string>>(
+    () => ({
+      new: t("new"),
+      waitingGroup: t("waitingGroup"),
+      inGroup: t("inProcess"),
+      finished: t("finished", { defaultValue: "Finished" }),
+      refused: t("refused"),
+    }),
+    [t],
+  );
 
-    const columns = {
-      new: {
-        id: "new",
-        title: t("new"),
-        taskIds: [],
-      },
-      inGroup: {
-        id: "inGroup",
-        title: t("inProcess"),
-        taskIds: [],
-      },
-      waitingGroup: {
-        id: "waitingGroup",
-        title: t("waitingGroup"),
-        taskIds: [],
-      },
-      refused: {
-        id: "refused",
-        title: t("refused"),
-        taskIds: [],
-      },
-    };
+  const [columns, setColumns] = useState<Record<LeedStatus, ColumnState>>(
+    () => emptyState(titles),
+  );
 
-    leeds.data.forEach((task: any) => {
-      // @ts-ignore
-      columns[task.status].taskIds.push(`task-${task.id}`);
-    });
-
-    return {
-      tasks,
-      columns,
-      columnOrder: ["new", "inGroup", "waitingGroup", "refused"],
-    };
-  };
-
-  const [data, setData] = useState<BoardData>(defaultValue);
-  const [updateLeed] = useUpdateLeedMutation();
   useEffect(() => {
-    if (leeds.isSuccess) {
-      setData(getTasks());
+    if (!isSuccess || !data) return;
+    const next: Record<LeedStatus, ColumnState> = emptyState(titles);
+    for (const c of data.columns) {
+      next[c.status] = {
+        status: c.status,
+        title: titles[c.status],
+        items: c.items,
+      };
     }
-  }, [leeds.data]);
+    setColumns(next);
+  }, [data, isSuccess, titles]);
 
   const onDragEnd = (result: DropResult) => {
     const { destination, source, draggableId } = result;
-
-    if (!destination) {
-      return;
-    }
-
+    if (!destination) return;
     if (
       destination.droppableId === source.droppableId &&
       destination.index === source.index
-    ) {
+    )
       return;
-    }
 
-    const start = data.columns[source.droppableId];
-    const finish = data.columns[destination.droppableId];
+    const sourceCol = columns[source.droppableId as LeedStatus];
+    const destCol = columns[destination.droppableId as LeedStatus];
+    if (!sourceCol || !destCol) return;
 
-    if (start === finish) {
-      const newTaskIds = Array.from(start.taskIds);
-      newTaskIds.splice(source.index, 1);
-      newTaskIds.splice(destination.index, 0, draggableId);
+    const leedId = Number(draggableId.replace("leed-", ""));
+    const leed = sourceCol.items.find((l) => l.id === leedId);
+    if (!leed) return;
 
-      const newColumn = {
-        ...start,
-        taskIds: newTaskIds,
-      };
-
-      const newState = {
-        ...data,
-        columns: {
-          ...data.columns,
-          [newColumn.id]: newColumn,
-        },
-      };
-
-      setData(newState);
-      return;
-    }
-
-    const startTaskIds = Array.from(start.taskIds);
-    startTaskIds.splice(source.index, 1);
-    const newStart = {
-      ...start,
-      taskIds: startTaskIds,
-    };
-
-    const finishTaskIds = Array.from(finish.taskIds);
-    finishTaskIds.splice(destination.index, 0, draggableId);
-    const newFinish = {
-      ...finish,
-      taskIds: finishTaskIds,
-    };
-
-    const newState = {
-      ...data,
-      columns: {
-        ...data.columns,
-        [newStart.id]: newStart,
-        [newFinish.id]: newFinish,
-      },
-    };
-
-    updateLeed({
-      id: result.draggableId.slice(5),
-      data:{status: result.destination?.droppableId},
+    // optimistic update
+    const sourceItems = [...sourceCol.items];
+    sourceItems.splice(source.index, 1);
+    const destItems =
+      sourceCol.status === destCol.status
+        ? sourceItems
+        : [...destCol.items];
+    destItems.splice(destination.index, 0, {
+      ...leed,
+      status: destCol.status,
     });
-    setData(newState);
+
+    setColumns((prev) => ({
+      ...prev,
+      [sourceCol.status]: { ...sourceCol, items: sourceItems },
+      [destCol.status]: { ...destCol, items: destItems },
+    }));
+
+    moveLeed({
+      id: leedId,
+      status: destCol.status,
+      position: destination.index,
+    });
   };
 
   return (
-    <div className="block w-auto overflow-x-auto ">
+    <div className="block w-auto overflow-x-auto">
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="grid grid-cols-4 gap-4 min-w-[900px] text-sm ">
-          {data.columnOrder.map((columnId) => {
-            const column = data.columns[columnId];
-            const tasks = column.taskIds.map((taskId) => data.tasks[taskId]);
-
-            return <Column key={column.id} column={column} tasks={tasks} />;
-          })}
+        <div className="grid grid-cols-5 gap-4 min-w-[1100px] text-sm">
+          {COLUMN_ORDER.map((status) => (
+            <Column
+              key={status}
+              column={columns[status]}
+              allowAdd={status === "new"}
+            />
+          ))}
         </div>
       </DragDropContext>
-      
     </div>
   );
 };
 
-interface ColumnProps {
-  column: Column;
-  tasks: Task[];
+function emptyState(
+  titles: Record<LeedStatus, string>,
+): Record<LeedStatus, ColumnState> {
+  return COLUMN_ORDER.reduce(
+    (acc, s) => ({
+      ...acc,
+      [s]: { status: s, title: titles[s], items: [] },
+    }),
+    {} as Record<LeedStatus, ColumnState>,
+  );
 }
 
-const Column: React.FC<ColumnProps> = ({ column, tasks }) => {
+interface ColumnProps {
+  column: ColumnState;
+  allowAdd: boolean;
+}
+
+const Column: React.FC<ColumnProps> = ({ column, allowAdd }) => {
   const [createLeed, { isLoading }] = useCreateLeedMutation();
   const { t } = useTranslation("leed");
   const [isModal, setIsModal] = useState(false);
+
   return (
-    <Card className="w-full min-w-[150px] text-sm block" key={column.id}>
+    <Card className="w-full min-w-[180px] text-sm block">
       <CardHeader className="px-4 py-2 border-b sticky text-sm">
-        <CardTitle className="text-lg">{column.title}</CardTitle>
+        <CardTitle className="text-base flex items-center justify-between">
+          <span>{column.title}</span>
+          <span className="text-xs text-muted-foreground">
+            {column.items.length}
+          </span>
+        </CardTitle>
       </CardHeader>
       <CardContent className="py-3 px-1 relative h-full text-sm">
-        {column.id === "new" && (
+        {allowAdd && (
           <Dialog open={isModal}>
             <DialogTrigger asChild>
               <Button
@@ -257,7 +180,7 @@ const Column: React.FC<ColumnProps> = ({ column, tasks }) => {
             </DialogTrigger>
             <DialogContent
               hideCloseClick={setIsModal}
-              className=" text-sm rounded-lg w-[min(100%-20px,500px)]"
+              className="text-sm rounded-lg w-[min(100%-20px,500px)]"
               onInteractOutside={() => setIsModal(false)}
               onEscapeKeyDown={() => setIsModal(false)}
               hideCloseButton={false}
@@ -281,15 +204,15 @@ const Column: React.FC<ColumnProps> = ({ column, tasks }) => {
             </DialogContent>
           </Dialog>
         )}
-        <Droppable droppableId={column.id}>
+        <Droppable droppableId={column.status}>
           {(provided) => (
             <div
               {...provided.droppableProps}
               ref={provided.innerRef}
-              className=" text-sm grid gap-2 min-h-[154px] "
+              className="text-sm grid gap-2 min-h-[154px]"
             >
-              {tasks.map((task, index) => (
-                <Task key={task.id} task={task} index={index} />
+              {column.items.map((leed, index) => (
+                <Card_ key={leed.id} leed={leed} index={index} />
               ))}
               {provided.placeholder}
             </div>
@@ -300,35 +223,40 @@ const Column: React.FC<ColumnProps> = ({ column, tasks }) => {
   );
 };
 
-interface TaskProps {
-  task: Task;
-  index: number;
-}
-
-const Task: React.FC<TaskProps> = ({ task, index }) => {
+const Card_: React.FC<{ leed: IKanbanLeed; index: number }> = ({
+  leed,
+  index,
+}) => {
   return (
-    <Draggable draggableId={task.id} index={index}>
+    <Draggable draggableId={`leed-${leed.id}`} index={index}>
       {(provided) => (
         <div
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           ref={provided.innerRef}
-          style={{
-            ...provided.draggableProps.style,
-          }}
-          className=" text-sm flex flex-col bg-white p-2  rounded-lg border relative"
+          style={{ ...provided.draggableProps.style }}
+          className="text-sm flex flex-col bg-white p-2 rounded-lg border relative"
         >
-          <div className="flex flex-col text-sm">
-            <span className="font-medium text-sm">{task.content.fio}</span>
-            {formatPhoneNumber(task.content.phone)}
+          <div className="flex flex-col text-sm pr-10">
+            <span className="font-medium text-sm">{leed.fio}</span>
+            <span>{formatPhoneNumber(leed.phone)}</span>
             <p className="">
-              {task.content.startTime} - {task.content.endTime}
+              {leed.startTime} - {leed.endTime}
             </p>
-            {/* <p className="mt-1">{task.content.course.name}</p> */}
+            {leed.course?.name && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {leed.course.name}
+              </p>
+            )}
+            {leed.status === "refused" && leed.refusedReason && (
+              <p className="text-xs text-red-500 mt-1">
+                {leed.refusedReason}
+              </p>
+            )}
           </div>
           <Link
-            to={`/leeds/${task.id.slice(5)}`}
-            className="flex items-center justify-center hover:bg-primary hover:text-white rounded-full w-[40px] h-[40px] right-[12px] absolute p-2"
+            to={`/leeds/${leed.id}`}
+            className="flex items-center justify-center hover:bg-primary hover:text-white rounded-full w-[40px] h-[40px] right-[12px] absolute p-2 top-1"
           >
             <CircleArrowRight />
           </Link>
@@ -337,3 +265,9 @@ const Task: React.FC<TaskProps> = ({ task, index }) => {
     </Draggable>
   );
 };
+
+// re-export for existing `import { LeedsPage }` consumers
+export default LeedsPage;
+
+// keep an unused reference to IKanbanColumn so it isn't tree-shaken from types
+export type { IKanbanColumn };

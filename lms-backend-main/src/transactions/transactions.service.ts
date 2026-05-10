@@ -1,16 +1,87 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Mentor, Student, Transaction, User } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { parse } from 'date-fns';
+import { parse, format } from 'date-fns';
 
 import { PaginationDto } from 'src/shared/dto/pagination.dto';
 import { SMSService } from 'src/sms/sms.service';
+import { NotificationService } from 'src/notification/notification.service';
 @Injectable()
 export class TransactionsService {
+  private readonly logger = new Logger('TransactionsService');
+
   constructor(
     private prisma: PrismaService,
     private smsService: SMSService,
+    private notifications: NotificationService,
   ) {}
+
+  /**
+   * Feature-flagged payment notification.
+   *
+   *   NOTIFY_VIA_QUEUE=true  → NotificationService.sendFromTemplate (async)
+   *   NOTIFY_VIA_QUEUE=false → legacy SMSService.sendPayment (sync)
+   *
+   * Никогда не кидает — финансовая транзакция уже завершена, уведомление
+   * это best-effort.
+   */
+  private async notifyPayment(student: {
+    fio: string;
+    fatherPhone?: string | null;
+    montherPhone?: string | null;
+    date: string | Date;
+    amount: number;
+  }) {
+    const useQueue = process.env.NOTIFY_VIA_QUEUE === 'true';
+    try {
+      if (useQueue) {
+        const dateStr = format(new Date(student.date), 'dd.MM.yyyy');
+        const amountPretty = student.amount
+          .toString()
+          .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+        const vars = {
+          student: { fio: student.fio },
+          amount: amountPretty,
+          date: dateStr,
+        };
+
+        const tasks: Promise<unknown>[] = [];
+        if (student.fatherPhone) {
+          tasks.push(
+            this.notifications.sendFromTemplate({
+              code: 'payment.confirmed',
+              channel: 'sms',
+              recipient: student.fatherPhone,
+              variables: vars,
+            }),
+          );
+        }
+        if (student.montherPhone) {
+          tasks.push(
+            this.notifications.sendFromTemplate({
+              code: 'payment.confirmed',
+              channel: 'sms',
+              recipient: student.montherPhone,
+              variables: vars,
+            }),
+          );
+        }
+        await Promise.all(tasks);
+      } else {
+        await this.smsService.sendPayment({
+          fio: student.fio,
+          fatherPhone: student.fatherPhone ?? null,
+          montherPhone: student.montherPhone ?? null,
+          amount: student.amount,
+          date: student.date,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `notifyPayment failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
 
   async findAllDebtors(user: User): Promise<Student[]> {
     const result = await this.prisma.student.findMany({
@@ -212,19 +283,20 @@ export class TransactionsService {
               },
             });
           }
-
-          return await this.smsService.sendPayment({
-            ...updatedStudent,
-            amount: data.amount,
-            date: data.date,
-          });
-        } else {
-          return await this.smsService.sendPayment({
-            ...updatedStudent,
-            amount: data.amount,
-            date: data.date,
-          });
         }
+
+        // Уведомление вне $transaction: отправка SMS не должна
+        // откатывать БД-транзакцию при сбое SMS-шлюза.
+        return updatedStudent;
+      }).then(async (updatedStudent) => {
+        await this.notifyPayment({
+          fio: (updatedStudent as any).fio,
+          fatherPhone: (updatedStudent as any).fatherPhone ?? null,
+          montherPhone: (updatedStudent as any).montherPhone ?? null,
+          amount: data.amount,
+          date: data.date,
+        });
+        return trans;
       });
     } else if (data.expenseType === 'salary') {
       const user = await this.prisma.user.findUnique({

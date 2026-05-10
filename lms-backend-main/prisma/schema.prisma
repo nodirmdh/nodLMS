@@ -1,23 +1,24 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl"]
 }
 
 model Branch {
-  id      Int          @id @default(autoincrement())
-  name    String        @unique
-  address String
-  courses Course[]
-  fines Fine[]
-  bonuses Bonus[]
+  id           Int           @id @default(autoincrement())
+  name         String        @unique
+  address      String
+  courses      Course[]
+  fines        Fine[]
+  bonuses      Bonus[]
   transactions Transaction[]
-  users   UserBranch[]
-  Lesson Lesson[]
+  users        UserBranch[]
+  Lesson       Lesson[]
 }
 
 model Leed {
@@ -35,6 +36,14 @@ model Leed {
   authorId        Int?
   author          User?           @relation(fields: [authorId], references: [id])
   date            DateTime?
+  /// Порядок карточки внутри колонки Kanban. Меньше = выше.
+  position        Int             @default(0)
+  /// Свободный текст, почему лид отказался (заполняется при status = refused).
+  refusedReason   String?
+
+  @@index([status, authorId])
+  @@index([date])
+  @@index([status, position])
 }
 
 model User {
@@ -82,8 +91,8 @@ model User {
 }
 
 model Avatar {
-  id   Int    @id @default(autoincrement())
-  url  String
+  id  Int    @id @default(autoincrement())
+  url String
 }
 
 model UserBranch {
@@ -134,6 +143,8 @@ model Student {
   examGrades     ExamGrade[]       @relation("StudentExamGrades")
   bonuses        StudentBonus[]
 
+  @@index([status])
+  @@index([fio])
   @@map("students")
 }
 
@@ -174,15 +185,16 @@ model Group {
 }
 
 model GroupStudent {
-  groupId   Int
-  studentId Int
-  discount Float?     @default(0)
+  groupId         Int
+  studentId       Int
+  discount        Float?             @default(0)
   discountComment String?
-  status    GroupStudentStatus @default(active)
-  group     Group              @relation(fields: [groupId], references: [id])
-  student   Student            @relation(fields: [studentId], references: [id])
+  status          GroupStudentStatus @default(active)
+  group           Group              @relation(fields: [groupId], references: [id])
+  student         Student            @relation(fields: [studentId], references: [id])
 
   @@id([groupId, studentId])
+  @@index([studentId, status])
   @@map("group_students")
 }
 
@@ -201,9 +213,12 @@ model Lesson {
   mentor        Mentor?           @relation(fields: [mentorId], references: [id])
   responsibleId Int?
   responsible   User?             @relation("ResponsibleForLessons", fields: [responsibleId], references: [id])
-  branchId        Int?
-  branch          Branch?           @relation(fields: [branchId], references: [id])
+  branchId      Int?
+  branch        Branch?           @relation(fields: [branchId], references: [id])
 
+  @@index([date, groupId])
+  @@index([groupId, status])
+  @@index([date, status])
   @@map("lessons")
 }
 
@@ -222,19 +237,20 @@ model StudentOnLesson {
 }
 
 model StudentBonus {
-  id        Int      @id @default(autoincrement())
-  name      String
-  date      DateTime
-  amount    Float
-  comment   String
-  studentId Int
-  student   Student  @relation(fields: [studentId], references: [id])
-  userId  Int?
-  user    User?     @relation(fields: [userId], references: [id])
-  mentorPercent    Int?
+  id            Int      @id @default(autoincrement())
+  name          String
+  date          DateTime
+  amount        Float
+  comment       String
+  studentId     Int
+  student       Student  @relation(fields: [studentId], references: [id])
+  userId        Int?
+  user          User?    @relation(fields: [userId], references: [id])
+  mentorPercent Int?
 
   @@map("student_bonuses")
 }
+
 model Transaction {
   id          Int             @id @default(autoincrement())
   type        TransactionType
@@ -250,9 +266,12 @@ model Transaction {
   user        User?           @relation("UserTransactions", fields: [userId], references: [id])
   expenseType ExpenseType?
   profitType  ProfitType?
-  branchId Int
-  branch   Branch    @relation(fields: [branchId], references: [id])
+  branchId    Int
+  branch      Branch          @relation(fields: [branchId], references: [id])
 
+  @@index([date, branchId])
+  @@index([type, date])
+  @@index([studentId, date])
   @@map("transactions")
 }
 
@@ -267,7 +286,7 @@ model Fine {
   authorId Int
   author   User     @relation("FinesAuthored", fields: [authorId], references: [id])
   branchId Int
-  branch   Branch    @relation(fields: [branchId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
 
   @@map("fines")
 }
@@ -283,21 +302,21 @@ model Bonus {
   authorId Int
   author   User     @relation("BonusesAuthored", fields: [authorId], references: [id])
   branchId Int
-  branch   Branch    @relation(fields: [branchId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
 
   @@map("bonuses")
 }
 
 model Exam {
   id            Int         @id @default(autoincrement())
-  name         String
+  name          String
   groupId       Int
   group         Group       @relation(fields: [groupId], references: [id], name: "GroupExams")
   status        ExamStatus  @default(new)
   responsibleId Int
   responsible   User        @relation(fields: [responsibleId], references: [id], name: "ResponsibleExams")
   comments      String?
-  date      DateTime
+  date          DateTime
   grades        ExamGrade[] @relation("grades")
 
   @@map("exams")
@@ -312,8 +331,8 @@ model ExamGrade {
   exam      Exam    @relation(fields: [examId], references: [id], name: "grades")
   student   Student @relation(fields: [studentId], references: [id], name: "StudentExamGrades")
 
-  @@map("exam_grades")
   @@unique([examId, studentId])
+  @@map("exam_grades")
 }
 
 enum ExamStatus {
@@ -433,4 +452,255 @@ enum UserStatusType {
   noWork
   onSickLeave
   onVacation
+}
+
+// ============================================================
+// Wave 1 — infra tables: Notifications, Audit log, Refresh token
+// All fields nullable where it makes sense to keep initial
+// migration additive and reversible.
+// ============================================================
+
+enum NotificationChannel {
+  sms
+  telegram
+  email
+  push
+}
+
+enum NotificationStatus {
+  queued
+  sent
+  delivered
+  failed
+  skipped
+}
+
+model NotificationTemplate {
+  id        Int                 @id @default(autoincrement())
+  code      String
+  channel   NotificationChannel
+  locale    String              @default("ru")
+  subject   String?
+  body      String
+  // Optional JSON list of variable names rendered into `body` (informational).
+  variables Json?
+  enabled   Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  logs NotificationLog[]
+
+  @@unique([code, channel, locale])
+  @@index([channel, enabled])
+  @@map("notification_templates")
+}
+
+model NotificationLog {
+  id          Int                   @id @default(autoincrement())
+  templateId  Int?
+  template    NotificationTemplate? @relation(fields: [templateId], references: [id])
+  channel     NotificationChannel
+  recipient   String
+  status      NotificationStatus    @default(queued)
+  payload     Json?
+  error       String?
+  // BullMQ job id so we can cross-reference in queue dashboards.
+  jobId       String?
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  createdAt   DateTime              @default(now())
+
+  @@index([recipient, createdAt])
+  @@index([channel, status, createdAt])
+  @@map("notification_logs")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  // Actor — nullable because some actions run from system (cron, webhook).
+  userId    Int?
+  action    String // e.g. "student.update", "transaction.create"
+  entity    String // e.g. "Student", "Transaction"
+  entityId  String? // stringified id, to support composite keys later
+  // Snapshot of changed fields / before-after. Shape up to caller.
+  diff      Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model RefreshToken {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  // SHA-256 of the raw token. We never store the token itself.
+  tokenHash  String    @unique
+  deviceId   String?
+  userAgent  String?
+  ip         String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ============================================================
+// Wave 1 — hot-path indexes on existing tables (additive only).
+// Declared on the respective models below.
+// ============================================================
+
+// ============================================================
+// Wave 2 — feature tables
+// ============================================================
+
+enum TaskStatus {
+  pending
+  inProgress
+  done
+  cancelled
+}
+
+model Task {
+  id            Int        @id @default(autoincrement())
+  title         String
+  description   String?
+  dueAt         DateTime?
+  /// Кому назначено.
+  assignedTo    Int?
+  /// Свободный тип сущности: "student" | "leed" | "group" — чтобы не
+  /// плодить полиморфные FK. Поиск ведём по (relatedEntity, relatedId).
+  relatedEntity String?
+  relatedId     Int?
+  status        TaskStatus @default(pending)
+  createdBy     Int?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([assignedTo, status])
+  @@index([dueAt, status])
+  @@index([relatedEntity, relatedId])
+  @@map("tasks")
+}
+
+enum PaymentPlanStatus {
+  active
+  completed
+  cancelled
+}
+
+enum PaymentPlanItemStatus {
+  pending
+  paid
+  overdue
+  cancelled
+}
+
+model PaymentPlan {
+  id          Int               @id @default(autoincrement())
+  studentId   Int
+  totalAmount Float
+  monthsCount Int
+  startDate   DateTime
+  status      PaymentPlanStatus @default(active)
+  comment     String?
+  createdBy   Int?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  items PaymentPlanItem[]
+
+  @@index([studentId, status])
+  @@map("payment_plans")
+}
+
+model PaymentPlanItem {
+  id                Int                   @id @default(autoincrement())
+  planId            Int
+  plan              PaymentPlan           @relation(fields: [planId], references: [id], onDelete: Cascade)
+  dueDate           DateTime
+  amount            Float
+  paidAmount        Float                 @default(0)
+  status            PaymentPlanItemStatus @default(pending)
+  /// Какая транзакция закрыла платёж (опционально, для истории).
+  paidTransactionId Int?
+  createdAt         DateTime              @default(now())
+
+  @@index([planId, dueDate])
+  @@index([status, dueDate])
+  @@map("payment_plan_items")
+}
+
+enum HomeworkSubmissionStatus {
+  submitted
+  reviewed
+  returned
+}
+
+model Homework {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String
+  /// Либо groupId (для всей группы), либо lessonId (урок-specific).
+  groupId     Int?
+  lessonId    Int?
+  dueDate     DateTime?
+  /// JSON список ссылок на файлы (пока локальные uploads/, потом S3).
+  attachments Json?
+  createdBy   Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  submissions HomeworkSubmission[]
+
+  @@index([groupId, dueDate])
+  @@index([lessonId])
+  @@map("homeworks")
+}
+
+model HomeworkSubmission {
+  id              Int                      @id @default(autoincrement())
+  homeworkId      Int
+  homework        Homework                 @relation(fields: [homeworkId], references: [id], onDelete: Cascade)
+  studentId       Int
+  /// Текст ответа или комментарий студента.
+  comment         String?
+  /// JSON список файлов студента.
+  files           Json?
+  grade           Float?
+  reviewerComment String?
+  status          HomeworkSubmissionStatus @default(submitted)
+  submittedAt     DateTime                 @default(now())
+  reviewedAt      DateTime?
+  reviewedBy      Int?
+
+  @@unique([homeworkId, studentId])
+  @@index([studentId])
+  @@map("homework_submissions")
+}
+
+model TelegramLink {
+  id             Int       @id @default(autoincrement())
+  /// Привязка либо к User (сотрудник), либо к Student/родителю.
+  userId         Int?
+  studentId      Int?
+  /// Идентификатор в Telegram (chat_id / from.id). Уникален.
+  telegramUserId String    @unique
+  username       String?
+  /// Однократный код при установке через команду /start.
+  linkCode       String?   @unique
+  active         Boolean   @default(true)
+  linkedAt       DateTime  @default(now())
+  lastSeenAt     DateTime?
+
+  @@index([userId])
+  @@index([studentId])
+  @@map("telegram_links")
 }

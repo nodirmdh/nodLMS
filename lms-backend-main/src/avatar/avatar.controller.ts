@@ -26,6 +26,10 @@ export class AvatarController {
 
   @Get(':imgPath')
   seeUploadedFile(@Param('imgPath') image: string, @Res() res: Response) {
+    // Defense against path traversal: only allow simple filenames.
+    if (!/^[A-Za-z0-9._-]+$/.test(image) || image.includes('..')) {
+      throw new BadRequestException('Invalid file name');
+    }
     return res.sendFile(join(process.cwd(), 'uploads', image));
   }
 }

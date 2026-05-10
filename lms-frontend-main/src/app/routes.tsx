@@ -50,6 +50,12 @@ import { useSelector } from "react-redux";
 import { RootState } from "./store/store.config";
 import NotFound from "@/pages/not-found/not-found";
 import { Jurnal } from "@/pages/groups/jurnal";
+import { TasksPage } from "@/pages/tasks";
+import { DebtorsPage } from "@/pages/debtors";
+import { CeoDashboardPage } from "@/pages/dashboard/ceo-dashboard";
+import { PaymentPlansPage } from "@/pages/payment-plans";
+import { HomeworkPage } from "@/pages/homework";
+import { NotificationTemplatesPage } from "@/pages/admin/notification-templates";
 
 const RoleCheck = ({
   element,
@@ -361,6 +367,60 @@ export const routes = createBrowserRouter([
           <RoleCheck
             element={<UpDateExam />}
             allowedRoles={["CEO", "admin", "manager"]}
+          />
+        ),
+      },
+      {
+        path: "/dashboard-ceo",
+        element: (
+          <RoleCheck
+            element={<CeoDashboardPage />}
+            allowedRoles={["CEO", "admin"]}
+          />
+        ),
+      },
+      {
+        path: "/tasks",
+        element: (
+          <RoleCheck
+            element={<TasksPage />}
+            allowedRoles={["CEO", "admin", "manager"]}
+          />
+        ),
+      },
+      {
+        path: "/debtors",
+        element: (
+          <RoleCheck
+            element={<DebtorsPage />}
+            allowedRoles={["CEO", "admin", "manager"]}
+          />
+        ),
+      },
+      {
+        path: "/payment-plans",
+        element: (
+          <RoleCheck
+            element={<PaymentPlansPage />}
+            allowedRoles={["CEO", "admin", "manager"]}
+          />
+        ),
+      },
+      {
+        path: "/homework",
+        element: (
+          <RoleCheck
+            element={<HomeworkPage />}
+            allowedRoles={["CEO", "admin", "mentor"]}
+          />
+        ),
+      },
+      {
+        path: "/admin/notification-templates",
+        element: (
+          <RoleCheck
+            element={<NotificationTemplatesPage />}
+            allowedRoles={["CEO", "admin"]}
           />
         ),
       },

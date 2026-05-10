@@ -16,6 +16,16 @@ import { lessonsApi } from "./services/lessons.service";
 import { accountingApi } from "./services/accounting.service";
 import { testApi } from "./services/test.service";
 import { imageApi } from "./services/image.service";
+import { leedsKanbanApi } from "./services/leeds-kanban.service";
+import { tasksApi } from "./services/tasks.service";
+import { paymentPlansApi } from "./services/payment-plans.service";
+import { homeworkApi } from "./services/homework.service";
+import { dashboardApi } from "./services/dashboard.service";
+import { debtorsApi } from "./services/debtors.service";
+import { reportsApi } from "./services/reports.service";
+import { telegramApi } from "./services/telegram.service";
+import { notificationTemplatesApi } from "./services/notification-templates.service";
+
 export const reducer = combineReducers({
   [authApi.reducerPath]: authApi.reducer,
   [userApi.reducerPath]: userApi.reducer,
@@ -32,6 +42,15 @@ export const reducer = combineReducers({
   [accountingApi.reducerPath]: accountingApi.reducer,
   [testApi.reducerPath]: testApi.reducer,
   [imageApi.reducerPath]: imageApi.reducer,
+  [leedsKanbanApi.reducerPath]: leedsKanbanApi.reducer,
+  [tasksApi.reducerPath]: tasksApi.reducer,
+  [paymentPlansApi.reducerPath]: paymentPlansApi.reducer,
+  [homeworkApi.reducerPath]: homeworkApi.reducer,
+  [dashboardApi.reducerPath]: dashboardApi.reducer,
+  [debtorsApi.reducerPath]: debtorsApi.reducer,
+  [reportsApi.reducerPath]: reportsApi.reducer,
+  [telegramApi.reducerPath]: telegramApi.reducer,
+  [notificationTemplatesApi.reducerPath]: notificationTemplatesApi.reducer,
   authState: authReducer,
   userState: userReducer,
 });
