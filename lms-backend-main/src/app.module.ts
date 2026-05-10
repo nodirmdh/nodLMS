@@ -66,6 +66,7 @@ export class AppModule {
         { path: '/auth/login', method: RequestMethod.POST },
         { path: '/auth/confirm', method: RequestMethod.POST },
         { path: '/auth/send-sms', method: RequestMethod.POST },
+        { path: '/auth/dev-seed', method: RequestMethod.POST },
         { path: '/avatars/:imgPath', method: RequestMethod.GET },
       )
       .forRoutes({ path: '*', method: RequestMethod.ALL });
