@@ -1,27 +1,36 @@
 import {
   ForbiddenException,
-  HttpStatus,
-  Inject,
   Injectable,
   NotFoundException,
-  Scope,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role, User } from '@prisma/client';
 import { SMSService } from 'src/sms/sms.service';
-import { CACHE_MANAGER, CacheStore } from '@nestjs/cache-manager';
-import { sign, verify } from 'jsonwebtoken';
+import { sign } from 'jsonwebtoken';
 import { AccessTokenPayload } from './middleware/auth.middleware';
-import { REQUEST } from '@nestjs/core';
+import { OtpService } from './otp.service';
+import {
+  RefreshIssueContext,
+  RefreshIssueResult,
+  RefreshTokenService,
+} from './refresh-token.service';
 
-@Injectable({ scope: Scope.REQUEST })
+/**
+ * AuthService — no longer request-scoped. `getMe()` receives the already
+ * resolved user via `@CurrentUser` in the controller.
+ *
+ * OTP lives in Redis (OtpService). Access + refresh tokens are issued
+ * together on successful `confirm()`; the refresh flow is delegated to
+ * RefreshTokenService.
+ */
+@Injectable()
 export class AuthService {
   constructor(
-    @Inject(REQUEST) private readonly request: Request,
-    @Inject(CACHE_MANAGER) private cacheManager: CacheStore,
     private prisma: PrismaService,
     private smsService: SMSService,
+    private otpService: OtpService,
+    private refreshTokenService: RefreshTokenService,
   ) {}
 
   createAccessToken({ id, role }: AccessTokenPayload): string {
@@ -31,84 +40,89 @@ export class AuthService {
   }
 
   assignTokens(id: number, role: Role[]) {
+    // Legacy single-token helper kept for callers that don't want the full
+    // pair. New code should use `confirm()` which returns access + refresh.
     return this.createAccessToken({ id, role });
   }
 
   async login(phone: string): Promise<{ message: string }> {
     const user = await this.findbyPhone(phone);
+    if (!user) throw new NotFoundException();
+    if (user.status === 'noWork') throw new ForbiddenException();
 
-    if (user) {
-      if (user.status !== 'noWork') {
-        // Dev/test bypass: при DEV_OTP_BYPASS=true используем фиксированный код 000000
-        if (
-          process.env.DEV_OTP_BYPASS === 'true' ||
-          process.env.NODE_ENV !== 'production'
-        ) {
-          await this.cacheManager.set(`otp:${phone}`, 0, 1000 * 900);
-          return { message: 'success' };
-        }
+    await this.otpService.issue(phone);
 
-        await this.cacheManager.set(
-          `otp:${phone}`,
-          Math.floor(100000 + Math.random() * 900000),
-          1000 * 900,
-        );
-        const smsStatus = await this.smsService.sendAuthSMS(phone);
-
-        if (smsStatus) {
-          return { message: 'success' };
-        } else {
-          throw new ServiceUnavailableException({
-            error: 'SMS service not avialable',
-          });
-        }
-      } else {
-        throw new ForbiddenException();
-      }
-    } else {
-      throw new NotFoundException();
+    if (
+      process.env.DEV_OTP_BYPASS === 'true' ||
+      process.env.NODE_ENV !== 'production'
+    ) {
+      return { message: 'success' };
     }
+
+    const smsStatus = await this.smsService.sendAuthSMS(phone);
+    if (!smsStatus) {
+      throw new ServiceUnavailableException({
+        error: 'SMS service not avialable',
+      });
+    }
+    return { message: 'success' };
   }
 
-  async confirm({
-    phone,
-    code,
-  }: {
-    phone: string;
-    code: string;
-  }): Promise<{ token: string }> {
-    const cachedOtp = await this.cacheManager.get(`otp:${phone}`);
+  async confirm(
+    { phone, code }: { phone: string; code: string },
+    ctx: RefreshIssueContext = {},
+  ): Promise<{
+    /** @deprecated use `accessToken`. Kept for backwards compat. */
+    token: string;
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: Date;
+  }> {
+    const ok = await this.otpService.verify(phone, code);
+    if (!ok) throw new ForbiddenException();
 
-    if (+code === cachedOtp) {
-      const user = await this.prisma.user.findUnique({ where: { phone } });
-      return { token: this.assignTokens(user.id, user.role) };
-    } else {
-      throw new ForbiddenException();
-    }
+    const user = await this.prisma.user.findUnique({ where: { phone } });
+    if (!user) throw new NotFoundException();
+
+    const pair = await this.refreshTokenService.issue(user, ctx);
+    return {
+      token: pair.accessToken,
+      accessToken: pair.accessToken,
+      refreshToken: pair.refreshToken,
+      expiresAt: pair.expiresAt,
+    };
+  }
+
+  async refresh(
+    rawToken: string,
+    ctx: RefreshIssueContext = {},
+  ): Promise<RefreshIssueResult> {
+    return this.refreshTokenService.rotate(rawToken, ctx);
+  }
+
+  async logout(rawToken: string | null | undefined): Promise<void> {
+    if (!rawToken) return;
+    await this.refreshTokenService.revoke(rawToken);
+  }
+
+  async logoutAll(userId: number): Promise<{ revoked: number }> {
+    const revoked = await this.refreshTokenService.revokeAllForUser(userId);
+    return { revoked };
   }
 
   async findbyPhone(phone: string): Promise<User> {
     return this.prisma.user.findUnique({ where: { phone } });
   }
 
-  async getMe(): Promise<any> {
-    const request = this.request;
+  async getMe(user: User): Promise<any> {
+    if (!user) throw new ForbiddenException();
 
-    if (request) {
-      // @ts-ignore
-      const req = (await this.request.user) as User;
-
-      if (req.role.includes('mentor')) {
-        const mentor = await this.prisma.mentor.findUnique({
-          where: { userId: req.id },
-        });
-
-        return { ...req, mentorId: mentor.id };
-      } else {
-        return req;
-      }
-    } else {
-      throw new ForbiddenException();
+    if (user.role?.includes('mentor')) {
+      const mentor = await this.prisma.mentor.findUnique({
+        where: { userId: user.id },
+      });
+      return { ...user, mentorId: mentor?.id ?? null };
     }
+    return user;
   }
 }

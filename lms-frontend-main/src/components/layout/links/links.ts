@@ -13,6 +13,11 @@ import {
   BookCheck,
   ExternalLink,
   Settings,
+  ListChecks,
+  PiggyBank,
+  CreditCard,
+  BookOpen,
+  BarChart3,
 } from "lucide-react";
 
 export interface NavLink {
@@ -26,7 +31,7 @@ export interface SideLink extends NavLink {
   sub?: NavLink[];
 }
 
-const lessonRole:string[]=["CEO", "assistent", "manager", "admin"]
+const lessonRole: string[] = ["CEO", "assistent", "manager", "admin"];
 
 const links: SideLink[] = [
   {
@@ -36,9 +41,21 @@ const links: SideLink[] = [
     role: ["CEO", "assistent", "manager", "mentor", "admin"],
   },
   {
+    to: "/dashboard-ceo",
+    label: "ceoDashboard",
+    icon: BarChart3,
+    role: ["CEO", "admin"],
+  },
+  {
     to: "/leeds",
     label: "leeds",
     icon: ClipboardPlus,
+    role: ["CEO", "assistent", "manager", "admin"],
+  },
+  {
+    to: "/tasks",
+    label: "tasks",
+    icon: ListChecks,
     role: ["CEO", "assistent", "manager", "admin"],
   },
   {
@@ -60,16 +77,34 @@ const links: SideLink[] = [
     role: ["CEO"],
   },
   {
+    to: "/homework",
+    label: "homework",
+    icon: BookOpen,
+    role: ["CEO", "admin", "mentor"],
+  },
+  {
     to: "/exams",
     label: "exams",
     icon: BookCheck,
     role: ["CEO", "admin", "assistent", "mentor"],
   },
   {
+    to: "/debtors",
+    label: "debtors",
+    icon: PiggyBank,
+    role: ["CEO", "admin", "manager"],
+  },
+  {
+    to: "/payment-plans",
+    label: "paymentPlans",
+    icon: CreditCard,
+    role: ["CEO", "admin", "manager"],
+  },
+  {
     to: "",
     label: "branch",
     icon: ExternalLink,
-    role: ["CEO","admin"],
+    role: ["CEO", "admin"],
     sub: [
       {
         to: "/staffs",
@@ -81,7 +116,7 @@ const links: SideLink[] = [
         to: "/accounting",
         label: "accounting",
         icon: FileSliders,
-        role: ["CEO","admin"],
+        role: ["CEO", "admin"],
       },
       {
         to: "/fines",
@@ -110,6 +145,12 @@ const links: SideLink[] = [
     ],
   },
   {
+    to: "/admin/notification-templates",
+    label: "notificationTemplates",
+    icon: Settings,
+    role: ["CEO", "admin"],
+  },
+  {
     to: "/settings",
     label: "settings",
     icon: Settings,
@@ -117,4 +158,4 @@ const links: SideLink[] = [
   },
 ];
 
-export {links,lessonRole}
+export { links, lessonRole };

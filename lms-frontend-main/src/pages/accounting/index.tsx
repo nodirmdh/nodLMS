@@ -35,6 +35,7 @@ import { useState } from "react";
 import { formatAmount } from "@/lib/utils";
 import { useSelector } from "react-redux";
 import { RootState } from "@/app/store/store.config";
+import { ExportExcelButton } from "@/components/export-excel-button";
 const filterSchema = z.object({
   role: z.string().optional(),
   date: z.coerce.date().optional(),
@@ -218,6 +219,7 @@ export const AccountingPage = () => {
               {t("listDebtors")}
             </Button>
           </Link>
+          <ExportExcelButton kind="transactions.excel" />
           {toAuthRoleCheck(role, ["CEO"]) && (
             <Link to="/accounting/create">
               <Button

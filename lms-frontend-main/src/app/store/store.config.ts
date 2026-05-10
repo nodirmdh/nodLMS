@@ -28,6 +28,16 @@ import { lessonsApi } from "./services/lessons.service";
 import { accountingApi } from "./services/accounting.service";
 import { testApi } from "./services/test.service";
 import { imageApi } from "./services/image.service";
+import { leedsKanbanApi } from "./services/leeds-kanban.service";
+import { tasksApi } from "./services/tasks.service";
+import { paymentPlansApi } from "./services/payment-plans.service";
+import { homeworkApi } from "./services/homework.service";
+import { dashboardApi } from "./services/dashboard.service";
+import { debtorsApi } from "./services/debtors.service";
+import { reportsApi } from "./services/reports.service";
+import { telegramApi } from "./services/telegram.service";
+import { notificationTemplatesApi } from "./services/notification-templates.service";
+
 const persistConfig = {
   key: "root",
   storage,
@@ -58,7 +68,16 @@ export const store = configureStore({
       lessonsApi.middleware,
       accountingApi.middleware,
       testApi.middleware,
-      imageApi.middleware
+      imageApi.middleware,
+      leedsKanbanApi.middleware,
+      tasksApi.middleware,
+      paymentPlansApi.middleware,
+      homeworkApi.middleware,
+      dashboardApi.middleware,
+      debtorsApi.middleware,
+      reportsApi.middleware,
+      telegramApi.middleware,
+      notificationTemplatesApi.middleware
     );
   },
 });
