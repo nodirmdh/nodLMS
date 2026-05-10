@@ -14,7 +14,7 @@ export class StudentsService {
     const { groups, leadId, ...studentData } = data;
     const student = await this.prisma.student.create({ data: studentData });
 
-    for (const group of groups) {
+    for (const group of groups ?? []) {
       const groupId = +group.groupId;
 
       const groupStudent = await this.prisma.groupStudent.findUnique({
@@ -32,7 +32,7 @@ export class StudentsService {
             data: {
               group: { connect: { id: groupId } },
               student: { connect: { id: student.id } },
-              discount: group.discount,
+              discount: group.discount != null ? Number(group.discount) : null,
               status: 'active',
             },
           });

@@ -30,24 +30,39 @@ export class SchedulerBootstrap implements OnApplicationBootstrap {
       return;
     }
 
-    await this.queue.add(
-      JOB_NAMES.SCHEDULER.CLOSE_COMPLETED_GROUPS,
-      {},
-      {
-        repeat: { pattern: '59 59 23 * * *' },
-        jobId: 'repeat:close-completed-groups',
-      },
-    );
+    try {
+      await Promise.race([
+        this.queue.add(
+          JOB_NAMES.SCHEDULER.CLOSE_COMPLETED_GROUPS,
+          {},
+          {
+            repeat: { pattern: '59 59 23 * * *' },
+            jobId: 'repeat:close-completed-groups',
+          },
+        ),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('BullMQ add() timed out after 5s')),
+            5_000,
+          ),
+        ),
+      ]);
 
-    await this.queue.add(
-      JOB_NAMES.SCHEDULER.PROCESS_SALARIES,
-      {},
-      {
-        repeat: { pattern: '0 1 10 * *' },
-        jobId: 'repeat:process-salaries',
-      },
-    );
+      await this.queue.add(
+        JOB_NAMES.SCHEDULER.PROCESS_SALARIES,
+        {},
+        {
+          repeat: { pattern: '0 1 10 * *' },
+          jobId: 'repeat:process-salaries',
+        },
+      );
 
-    this.logger.log('registered repeat jobs: close-groups, process-salaries');
+      this.logger.log('registered repeat jobs: close-groups, process-salaries');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `skipping repeat-job registration (Redis unreachable?): ${message}`,
+      );
+    }
   }
 }

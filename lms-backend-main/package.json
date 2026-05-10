@@ -8,7 +8,7 @@
   "scripts": {
     "build": "npx nest build",
     "render:build": "npm install --include=dev && npx prisma generate && npm run build",
-    "render:start": "npx prisma migrate deploy && node dist/src/main",
+    "render:start": "node scripts/render-start.js",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
