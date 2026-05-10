@@ -39,8 +39,11 @@ export class AuthService {
 
     if (user) {
       if (user.status !== 'noWork') {
-        // В dev-режиме ставим фиксированный OTP 000000 и не отправляем SMS
-        if (process.env.NODE_ENV !== 'production') {
+        // Dev/test bypass: при DEV_OTP_BYPASS=true используем фиксированный код 000000
+        if (
+          process.env.DEV_OTP_BYPASS === 'true' ||
+          process.env.NODE_ENV !== 'production'
+        ) {
           await this.cacheManager.set(`otp:${phone}`, 0, 1000 * 900);
           return { message: 'success' };
         }
