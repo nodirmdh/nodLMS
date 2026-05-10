@@ -1,0 +1,1 @@
+export {exprenceSchema} from "./student-bonus-schema"

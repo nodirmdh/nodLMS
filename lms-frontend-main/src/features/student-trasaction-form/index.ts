@@ -1,0 +1,1 @@
+export {StudentTrasactionForm} from "./student-trasaction-form"

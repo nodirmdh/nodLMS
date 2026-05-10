@@ -1,0 +1,436 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl"]
+}
+
+model Branch {
+  id      Int          @id @default(autoincrement())
+  name    String        @unique
+  address String
+  courses Course[]
+  fines Fine[]
+  bonuses Bonus[]
+  transactions Transaction[]
+  users   UserBranch[]
+  Lesson Lesson[]
+}
+
+model Leed {
+  id              Int             @id @default(autoincrement())
+  fio             String
+  phone           String
+  discoveryMethod DiscoveryMethod
+  status          LeedStatus      @default(new)
+  comment         String
+  startTime       String
+  endTime         String
+  classDays       ClassDays[]     @default([every])
+  courseId        Int?
+  course          Course?         @relation(fields: [courseId], references: [id])
+  authorId        Int?
+  author          User?           @relation(fields: [authorId], references: [id])
+  date            DateTime?
+}
+
+model User {
+  id                 Int               @id @default(autoincrement())
+  fio                String
+  phone              String            @unique
+  phoneSecond        String?
+  documentSeries     String?
+  status             UserStatusType?   @default(work)
+  documentNo         String?
+  salaryMentorType   MentorSalaryType?
+  salaryMentor       Int?
+  branches           UserBranch[]
+  salary             Int?              @default(0)
+  telegram           String?
+  sex                String?
+  birthday           String?
+  socialStatus       String?
+  education          String?
+  familyStatus       String?
+  address            String?
+  cardNo             String?
+  cardPlaceholder    String?
+  lang               String?           @default("ru")
+  branch             Int?              @default(1)
+  balance            Float?            @default(0)
+  availableBalance   Float?            @default(0)
+  acceptedBalance    Float?            @default(0)
+  role               Role[]
+  groups             Group[]           @relation("ResponsibleGroups")
+  leeds              Leed[]
+  mentor             Mentor?
+  responsibleLessons Lesson[]          @relation("ResponsibleForLessons")
+  authorTransactions Transaction[]     @relation("AuthorTransactions")
+  transactions       Transaction[]     @relation("UserTransactions")
+  finesReceived      Fine[]            @relation("FinesReceived")
+  finesAuthored      Fine[]            @relation("FinesAuthored")
+  bonusesReceived    Bonus[]           @relation("BonusesReceived")
+  bonusesAuthored    Bonus[]           @relation("BonusesAuthored")
+  avatar             String?
+  responsibleExams   Exam[]            @relation("ResponsibleExams")
+  studentBonus       StudentBonus[]
+
+  @@map("users")
+}
+
+model Avatar {
+  id   Int    @id @default(autoincrement())
+  url  String
+}
+
+model UserBranch {
+  userId   Int
+  branchId Int
+  user     User   @relation(fields: [userId], references: [id])
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  @@id([userId, branchId])
+}
+
+model Mentor {
+  id      Int           @id @default(autoincrement())
+  userId  Int           @unique
+  user    User          @relation(fields: [userId], references: [id])
+  status  MentorStatus? @default(active)
+  lessons Lesson[]
+  courses Course[]
+  groups  Group[]       @relation("MentorGroup")
+
+  @@map("mentors")
+}
+
+model Student {
+  id             Int               @id @default(autoincrement())
+  fio            String
+  balance        Float?            @default(0)
+  phone          String
+  sex            String?
+  telegram       String?
+  documentSeries String?
+  documentNo     String?
+  birthday       String
+  pinfl          String?
+  status         StudentStatus?    @default(active)
+  lessons        StudentOnLesson[]
+  courses        Course[]
+  groupStudents  GroupStudent[]
+  fatherFio      String?
+  fatherPhone    String?
+  fatherJob      String?
+  montherFio     String?
+  montherPhone   String?
+  montherJob     String?
+  disability     Boolean?          @default(false)
+  transactions   Transaction[]
+  avatar         String?
+  examGrades     ExamGrade[]       @relation("StudentExamGrades")
+  bonuses        StudentBonus[]
+
+  @@map("students")
+}
+
+model Course {
+  id       Int       @id @default(autoincrement())
+  name     String
+  price    Int
+  branchId Int
+  branch   Branch    @relation(fields: [branchId], references: [id])
+  students Student[]
+  mentors  Mentor[]
+  groups   Group[]
+  leeds    Leed[]
+
+  @@map("courses")
+}
+
+model Group {
+  id            Int            @id @default(autoincrement())
+  name          String
+  status        GroupStatus    @default(waiting)
+  courseId      Int
+  course        Course         @relation(fields: [courseId], references: [id])
+  classDays     ClassDays[]
+  startTime     String
+  endTime       String
+  fromDate      DateTime
+  toDate        DateTime
+  mentorId      Int?
+  mentor        Mentor?        @relation("MentorGroup", fields: [mentorId], references: [id])
+  responsible   User?          @relation("ResponsibleGroups", fields: [responsibleId], references: [id])
+  responsibleId Int?
+  lesson        Lesson[]
+  groupStudents GroupStudent[]
+  exams         Exam[]         @relation("GroupExams")
+
+  @@map("groups")
+}
+
+model GroupStudent {
+  groupId   Int
+  studentId Int
+  discount Float?     @default(0)
+  discountComment String?
+  status    GroupStudentStatus @default(active)
+  group     Group              @relation(fields: [groupId], references: [id])
+  student   Student            @relation(fields: [studentId], references: [id])
+
+  @@id([groupId, studentId])
+  @@map("group_students")
+}
+
+model Lesson {
+  id            Int               @id @default(autoincrement())
+  name          String
+  date          DateTime
+  status        LessonStatus?     @default(waiting)
+  comment       String?
+  startTime     String
+  endTime       String
+  groupId       Int?
+  group         Group?            @relation(fields: [groupId], references: [id])
+  students      StudentOnLesson[]
+  mentorId      Int?
+  mentor        Mentor?           @relation(fields: [mentorId], references: [id])
+  responsibleId Int?
+  responsible   User?             @relation("ResponsibleForLessons", fields: [responsibleId], references: [id])
+  branchId        Int?
+  branch          Branch?           @relation(fields: [branchId], references: [id])
+
+  @@map("lessons")
+}
+
+model StudentOnLesson {
+  studentId Int
+  lessonId  Int
+  attended  Boolean
+  discount  Int?
+  reason    LessonStudentReason?
+
+  student Student? @relation(fields: [studentId], references: [id])
+  lesson  Lesson?  @relation(fields: [lessonId], references: [id])
+
+  @@id([studentId, lessonId])
+  @@map("student_on_lesson")
+}
+
+model StudentBonus {
+  id        Int      @id @default(autoincrement())
+  name      String
+  date      DateTime
+  amount    Float
+  comment   String
+  studentId Int
+  student   Student  @relation(fields: [studentId], references: [id])
+  userId  Int?
+  user    User?     @relation(fields: [userId], references: [id])
+  mentorPercent    Int?
+
+  @@map("student_bonuses")
+}
+model Transaction {
+  id          Int             @id @default(autoincrement())
+  type        TransactionType
+  date        DateTime
+  amount      Float
+  authorId    Int?
+  author      User?           @relation("AuthorTransactions", fields: [authorId], references: [id])
+  comment     String?
+  paymentType PaymentType?
+  studentId   Int?
+  student     Student?        @relation(fields: [studentId], references: [id])
+  userId      Int?
+  user        User?           @relation("UserTransactions", fields: [userId], references: [id])
+  expenseType ExpenseType?
+  profitType  ProfitType?
+  branchId Int
+  branch   Branch    @relation(fields: [branchId], references: [id])
+
+  @@map("transactions")
+}
+
+model Fine {
+  id       Int      @id @default(autoincrement())
+  name     String
+  date     DateTime
+  amount   Float
+  comment  String
+  userId   Int
+  user     User     @relation("FinesReceived", fields: [userId], references: [id])
+  authorId Int
+  author   User     @relation("FinesAuthored", fields: [authorId], references: [id])
+  branchId Int
+  branch   Branch    @relation(fields: [branchId], references: [id])
+
+  @@map("fines")
+}
+
+model Bonus {
+  id       Int      @id @default(autoincrement())
+  name     String
+  date     DateTime
+  amount   Float
+  comment  String
+  userId   Int
+  user     User     @relation("BonusesReceived", fields: [userId], references: [id])
+  authorId Int
+  author   User     @relation("BonusesAuthored", fields: [authorId], references: [id])
+  branchId Int
+  branch   Branch    @relation(fields: [branchId], references: [id])
+
+  @@map("bonuses")
+}
+
+model Exam {
+  id            Int         @id @default(autoincrement())
+  name         String
+  groupId       Int
+  group         Group       @relation(fields: [groupId], references: [id], name: "GroupExams")
+  status        ExamStatus  @default(new)
+  responsibleId Int
+  responsible   User        @relation(fields: [responsibleId], references: [id], name: "ResponsibleExams")
+  comments      String?
+  date      DateTime
+  grades        ExamGrade[] @relation("grades")
+
+  @@map("exams")
+}
+
+model ExamGrade {
+  id        Int     @id @default(autoincrement())
+  examId    Int
+  studentId Int
+  grade     Float?
+  comment   String?
+  exam      Exam    @relation(fields: [examId], references: [id], name: "grades")
+  student   Student @relation(fields: [studentId], references: [id], name: "StudentExamGrades")
+
+  @@map("exam_grades")
+  @@unique([examId, studentId])
+}
+
+enum ExamStatus {
+  new
+  passed
+  cancelled
+}
+
+enum MentorStatus {
+  active
+  noActive
+}
+
+enum TransactionType {
+  in
+  out
+}
+
+enum ExpenseType {
+  salary
+  rent
+  communal
+  other
+}
+
+enum ProfitType {
+  payment
+  other
+}
+
+enum PaymentType {
+  cash
+  click
+  card
+  transfer
+}
+
+enum LessonStatus {
+  waiting
+  waitingConfirm
+  completed
+  cancelled
+  notPassed
+}
+
+enum LessonStudentReason {
+  gotSick
+  askedOff
+  unknown
+}
+
+enum StudentStatus {
+  active
+  noActive
+  vacation
+}
+
+enum LeedStatus {
+  new
+  refused
+  waitingGroup
+  inGroup
+  finished
+}
+
+enum DiscoveryMethod {
+  streetAd
+  fromFriends
+  radio
+  tv
+  telegram
+  instagram
+}
+
+enum GroupStatus {
+  waiting
+  active
+  frozen
+  completed
+}
+
+enum GroupStudentStatus {
+  active
+  stopped
+  completed
+}
+
+enum ClassDays {
+  even
+  odd
+  every
+  Mon
+  Tues
+  Wednes
+  Thurs
+  Fri
+  Satur
+  Sun
+}
+
+enum Role {
+  CEO
+  admin
+  manager
+  mentor
+  assistent
+}
+
+enum MentorSalaryType {
+  fixed
+  fixedLesson
+  percentLesson
+}
+
+enum UserStatusType {
+  work
+  noWork
+  onSickLeave
+  onVacation
+}

@@ -1,0 +1,1 @@
+export {schemaStudent} from "./schema-student"
