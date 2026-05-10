@@ -26,10 +26,10 @@ export class AuthController {
     });
 
     const user = await this.prisma.user.upsert({
-      where: { phone: '998770421939' },
+      where: { phone: '998991234567' },
       update: {},
       create: {
-        phone: '998770421939',
+        phone: '998991234567',
         fio: 'Admin Test',
         salary: 0,
         role: ['CEO'],
@@ -44,7 +44,7 @@ export class AuthController {
       create: { userId: user.id, branchId: branch.id },
     });
 
-    return { message: 'Seed completed', phone: '998770421939', otp: '000000' };
+    return { message: 'Seed completed', phone: '998991234567', otp: '000000' };
   }
 
   @ApiOperation({ summary: 'Авторизация номер телефона' })
