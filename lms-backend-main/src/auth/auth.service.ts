@@ -1,5 +1,6 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -8,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Role, User } from '@prisma/client';
 import { SMSService } from 'src/sms/sms.service';
 import { sign } from 'jsonwebtoken';
+import Redis from 'ioredis';
 import { AccessTokenPayload } from './middleware/auth.middleware';
 import { OtpService } from './otp.service';
 import {
@@ -15,6 +17,9 @@ import {
   RefreshIssueResult,
   RefreshTokenService,
 } from './refresh-token.service';
+import { REDIS_CLIENT } from '../redis/redis.constants';
+
+const MENTOR_CACHE_TTL = 60; // секунд
 
 /**
  * AuthService — no longer request-scoped. `getMe()` receives the already
@@ -23,6 +28,9 @@ import {
  * OTP lives in Redis (OtpService). Access + refresh tokens are issued
  * together on successful `confirm()`; the refresh flow is delegated to
  * RefreshTokenService.
+ *
+ * `getMe()` кеширует mentorId в Redis — без этого при удалённой БД
+ * каждый `/auth/me` добавляет ещё один раунд в БД.
  */
 @Injectable()
 export class AuthService {
@@ -31,6 +39,7 @@ export class AuthService {
     private smsService: SMSService,
     private otpService: OtpService,
     private refreshTokenService: RefreshTokenService,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
   createAccessToken({ id, role }: AccessTokenPayload): string {
@@ -40,8 +49,6 @@ export class AuthService {
   }
 
   assignTokens(id: number, role: Role[]) {
-    // Legacy single-token helper kept for callers that don't want the full
-    // pair. New code should use `confirm()` which returns access + refresh.
     return this.createAccessToken({ id, role });
   }
 
@@ -114,15 +121,33 @@ export class AuthService {
     return this.prisma.user.findUnique({ where: { phone } });
   }
 
-  async getMe(user: User): Promise<any> {
+  async getMe(user: User): Promise<User & { mentorId?: number | null }> {
     if (!user) throw new ForbiddenException();
 
-    if (user.role?.includes('mentor')) {
-      const mentor = await this.prisma.mentor.findUnique({
-        where: { userId: user.id },
-      });
-      return { ...user, mentorId: mentor?.id ?? null };
+    if (!user.role?.includes('mentor')) return user;
+
+    const cacheKey = `mentor:userId:${user.id}`;
+    try {
+      const cached = await this.redis.get(cacheKey);
+      if (cached !== null) {
+        return {
+          ...user,
+          mentorId: cached === '' ? null : Number(cached),
+        };
+      }
+    } catch {
+      /* fallthrough to DB */
     }
-    return user;
+
+    const mentor = await this.prisma.mentor.findUnique({
+      where: { userId: user.id },
+    });
+    const mentorId = mentor?.id ?? null;
+
+    this.redis
+      .set(cacheKey, mentorId == null ? '' : String(mentorId), 'EX', MENTOR_CACHE_TTL)
+      .catch(() => void 0);
+
+    return { ...user, mentorId };
   }
 }

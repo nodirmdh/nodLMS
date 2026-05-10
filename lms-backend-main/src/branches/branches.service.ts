@@ -12,30 +12,14 @@ export class BranchesService {
     return await this.prisma.$transaction(async (prisma) => {
       const branch = await prisma.branch.create({ data });
 
-      if (branch) {
-        if (user.id !== 1) {
-          await prisma.userBranch.create({
-            data: {
-              userId: 1,
-              branchId: branch.id,
-            },
-          });
-
-          await prisma.userBranch.create({
-            data: {
-              userId: user.id,
-              branchId: branch.id,
-            },
-          });
-        } else {
-          await prisma.userBranch.create({
-            data: {
-              userId: user.id,
-              branchId: branch.id,
-            },
-          });
-        }
+      // Привязать автора к филиалу. Раньше был хардкод userId=1 для
+      // «главного CEO» — это падало, если в БД нет такого пользователя.
+      if (user?.id && branch) {
+        await prisma.userBranch.create({
+          data: { userId: user.id, branchId: branch.id },
+        });
       }
+
       return branch;
     });
   }

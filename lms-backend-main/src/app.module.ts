@@ -4,6 +4,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { RedisThrottlerStorage } from './common/throttler/redis-throttler.storage';
+import { ThrottlerStorageModule } from './common/throttler/throttler-storage.module';
 import { SMSModule } from './sms/sms.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -54,6 +55,7 @@ import { envValidationSchema } from './common/config/env.validation';
     // Storage: Redis (shared across API instances). Fallback to in-memory
     // when Redis is unreachable — see RedisThrottlerStorage.
     ThrottlerModule.forRootAsync({
+      imports: [ThrottlerStorageModule],
       useFactory: (storage: RedisThrottlerStorage) => ({
         throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
         storage,
@@ -92,7 +94,6 @@ import { envValidationSchema } from './common/config/env.validation';
     HealthModule,
   ],
   providers: [
-    RedisThrottlerStorage,
     TransactionsService,
     AppService,
     {

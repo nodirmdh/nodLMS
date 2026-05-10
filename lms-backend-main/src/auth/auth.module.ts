@@ -5,11 +5,18 @@ import { AuthService } from './auth.service';
 import { SMSModule } from 'src/sms/sms.module';
 import { OtpService } from './otp.service';
 import { RefreshTokenService } from './refresh-token.service';
+import { UserCacheService } from './user-cache.service';
 
 @Module({
   imports: [SMSModule],
-  providers: [AuthService, PrismaService, OtpService, RefreshTokenService],
+  providers: [
+    AuthService,
+    PrismaService,
+    OtpService,
+    RefreshTokenService,
+    UserCacheService,
+  ],
   controllers: [AuthController],
-  exports: [OtpService, RefreshTokenService],
+  exports: [OtpService, RefreshTokenService, UserCacheService],
 })
 export class AuthModule {}

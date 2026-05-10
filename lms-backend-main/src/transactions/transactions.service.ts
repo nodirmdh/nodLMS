@@ -304,11 +304,17 @@ export class TransactionsService {
       });
 
       if (user.salaryMentorType === 'percentLesson') {
+        const availableBalance = user.availableBalance ?? 0;
+        if (data.amount > availableBalance) {
+          throw new BadRequestException(
+            `Недостаточно доступного баланса у сотрудника. Доступно: ${availableBalance}, запрошено: ${data.amount}`,
+          );
+        }
         const acceptedAmount =
-          user.acceptedBalance - (data.amount * 100) / user.salaryMentor;
+          (user.acceptedBalance ?? 0) -
+          (data.amount * 100) / user.salaryMentor;
 
-        // Айлык алып атр
-        if (user.availableBalance - data.amount === 0) {
+        if (availableBalance - data.amount === 0) {
           await this.prisma.user.update({
             where: {
               id: user.id,
@@ -324,18 +330,24 @@ export class TransactionsService {
               id: user.id,
             },
             data: {
-              availableBalance: user.availableBalance - data.amount,
+              availableBalance: availableBalance - data.amount,
               acceptedBalance: acceptedAmount <= 0 ? 0 : acceptedAmount,
             },
           });
         }
       } else {
+        const availableBalance = user.availableBalance ?? 0;
+        if (data.amount > availableBalance) {
+          throw new BadRequestException(
+            `Недостаточно доступного баланса у сотрудника. Доступно: ${availableBalance}, запрошено: ${data.amount}`,
+          );
+        }
         await this.prisma.user.update({
           where: {
             id: user.id,
           },
           data: {
-            availableBalance: user.availableBalance - data.amount,
+            availableBalance: availableBalance - data.amount,
           },
         });
       }
